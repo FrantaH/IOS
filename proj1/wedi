@@ -1,0 +1,263 @@
+#!/bin/bash
+
+export POSIXLY_CORRECT=yes
+export WEDI_RC=/homes/eva/xh/xhoraz02/ios/wedi_soubor
+export EDITOR="nano"
+
+ADRESAR="."
+DATUM=
+STAV=
+
+
+
+# pokud neexistuje promenna WEDI_RC -> error, jinak vytvorit soubor i s cestou
+if [ -z $WEDI_RC ] ; then   
+  >&2 echo "promenna WEDI_RC neni nastavena"
+  exit 1
+elif [ ! -f $WEDI_RC ] ; then
+  mkdir -p "$(dirname "$WEDI_RC")" && touch $WEDI_RC
+fi
+
+# pokud se neprovede realpath, error
+realpath . >/dev/null 2>&1 || { echo >&2 "realpath utilita nejspise neni na vasem systemu nainstalovana"; exit 1; }
+
+# pokud neni nastavena promenna EDITOR ani VISUAL nastavi se vi, jinak VISUAL nebo EDITOR
+if [ -z $EDITOR ] ; then 
+	if [ -z "$VISUAL" ] ; then
+	  EDIT="vi"
+	else
+	  EDIT=$VISUAL
+	fi
+else
+	EDIT=$EDITOR
+fi
+
+if [ $# -eq 0 ]; then
+	STAV=0
+elif [ $# -eq 1 ]; then
+	if [ "$1" = '-m' ]; then
+		STAV=2	
+	elif [ "$1" = '-l' ]; then
+		STAV=3
+	else
+		ADRESAR=$1
+		if [ ! -d "$1" ]; then
+			STAV=1
+		fi
+	fi
+elif [ $# -eq 2 ]; then
+	if [ "$1" = '-m' ]; then
+		STAV=2	
+		if [ ! -d "$2" ]; then
+			>&2 echo "$2 neni adresar"
+			exit 1
+		fi
+		ADRESAR=$2
+
+	elif [ "$1" = '-l' ]; then
+		STAV=3
+		if [ ! -d "$2" ]; then
+			>&2 echo "$2 neni adresar"
+			exit 1
+		fi
+		ADRESAR=$2
+		
+	elif [ "$1" = '-b' ]; then
+		STAV=4
+		DATUM=$2
+		if ! echo "$DATUM" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$' ; then
+		>&2 echo "Chyba v datu $2"
+		exit 1
+		fi
+		DATUM="${DATUM//-}"
+		
+	elif [ "$1" = '-a' ]; then
+		STAV=5
+		DATUM=$2
+		if ! echo "$DATUM" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$'; then
+		>&2 echo "Chyba v datu $2"
+		exit 1
+		fi
+		DATUM="${DATUM//-}"
+	else
+		>&2 echo "spatna kombinace parametru $1 $2"
+		exit 1
+	fi
+elif [ $# -eq 3 ]; then
+	if [ "$1" = '-b' ]; then
+		STAV=4
+		DATUM=$2
+		if ! echo "$DATUM" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$' ; then
+		>&2 echo "Chyba v datu $2"
+		exit 1
+		fi
+		DATUM="${DATUM//-}"
+		
+		if [ -d "$3" ]; then
+			ADRESAR=$3
+		else
+			>&2 echo "$3 neni adresar"
+			exit 1
+		fi
+		
+	elif [ "$1" = '-a' ]; then
+		STAV=5
+		DATUM=$2
+		if  ! echo "$DATUM" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$' ; then
+		>&2 echo "Chyba v datu $2"
+		exit 1
+		fi
+		DATUM="${DATUM//-}"
+		
+		if [ -d "$3" ]; then
+			ADRESAR=$3
+		else
+			>&2 echo "$3 neni adresar"
+			exit 1
+		fi
+	else
+		>&2 echo "spatna kombinace parametru $1 $2 $3 "
+		exit 1
+	fi
+	
+else
+	>&2 echo "prilis mnoho parametru" $# 
+	exit 1
+fi
+
+
+#echo "stav:$STAV       ADRESAR:$ADRESAR         DATUM:$DATUM" 
+tmp=
+while IFS= read -r line
+do
+   
+	if [ -f "$(echo "$line" | sed s/^[0-9]*[\\\;]//g)" ]; then
+		tmp="$tmp $line"
+	fi
+		
+done <"$WEDI_RC"
+
+echo "$tmp" | sed s/' '/'\n'/g > $WEDI_RC
+sed -i '/^[[:space:]]*$/d' "$WEDI_RC"
+#cat "$WEDI_RC" | uniq | sed -i /^\s*$/d > $WEDI_RC z nepochopitelnyho duvodu nefunguje...
+
+#skript povoluje otevrit i neexistujici soubor, otazka je, co s nim udela editor
+if [ -f "$ADRESAR" ]; then
+	ADRESAR=$(realpath "$ADRESAR")
+elif [ -d "$ADRESAR" ]; then
+	ADRESAR=$(realpath "$ADRESAR")
+else
+	ADRESAR="$(realpath ./)/$ADRESAR"
+fi
+	
+if [ $STAV -eq 0 ]; then   # adresar
+
+	ADRESARHNUS=$(echo "$ADRESAR" | sed s/\\\//\\\\\\\//g)
+	#echo "$ADRESARHNUS"
+
+	soubor="$(cat $WEDI_RC |
+	sed s/[0-9]*[\\\;]//g |
+	sed s/"$ADRESARHNUS"\\\///g |
+	sed /[/]/d |
+	tail -n -1)"
+	#echo $soubor
+	echo "$(date +%Y%m%d);$ADRESAR/$soubor" >> $WEDI_RC
+	$EDIT "$soubor"
+	
+	exit $?		
+	
+elif [ $STAV -eq 1 ]; then   # soubor
+	
+	#echo "$(date +%Y%m%d);$ADRESAR"
+	echo "$(date +%Y%m%d);$ADRESAR" >> $WEDI_RC
+	$EDIT "$ADRESAR"
+	exit $?
+	
+elif [ $STAV -eq 2 ]; then   # -m
+
+	ADRESARHNUS=$(echo "$ADRESAR" | sed s/\\\//\\\\\\\//g)
+	#echo "$ADRESARHNUS"
+
+	soubor="$(cat "$WEDI_RC" |
+	sed s/^[0-9]*[\\\;]//g |
+	sed s/^"$ADRESARHNUS"\\\///g |
+	sed /[/]/d | 
+	sort |
+	uniq -c |
+	sort |
+	tail -n -1 |
+	sed s/^.*[0-9]*' '//g)"
+	
+	#echo "$soubor"
+	$EDIT "$ADRESAR/$soubor"
+	
+	exit $?		
+elif [ $STAV -eq 3 ]; then   # -l
+
+	ADRESARHNUS=$(echo "$ADRESAR" | sed s/\\\//\\\\\\\//g)
+	#echo "$ADRESARHNUS"
+
+	#soubor="$(
+	cat "$WEDI_RC" |
+	sed s/^[0-9]*[\\\;]//g |
+	sed s/^"$ADRESARHNUS"\\\///g |
+	sed /[/]/d |
+	sort |
+	uniq #)"
+	
+	#echo $soubor
+
+	exit $?								
+									
+elif [ $STAV -eq 4 ]; then   # -b
+	ADRESARHNUS=$(echo "$ADRESAR" | sed s/\\\//\\\\\\\//g)
+	#echo $ADRESARHNUS
+	pocet=0
+	cat $WEDI_RC | 
+	grep -Eq '^[0-9]{8}' | 
+	while IFS= read -r line
+	do
+   
+	if [ $DATUM -gt $line ]; then
+		pocet=$((pocet+1))
+	fi
+		
+	done
+	 
+	echo "$pocet"
+	
+	head -n -"$pocet" | 
+	sed s/^$ADRESARHNUS\\\///g | 
+	sed /[/]/d 
+	
+	exit $?
+	
+elif [ $STAV -eq 5 ]; then   # -a
+	ADRESARHNUS=$(echo "$ADRESAR" | sed s/\\\//\\\\\\\//g)
+	#echo $ADRESARHNUS
+	
+	pocet=0
+	cat $WEDI_RC | 
+	sed s/[\\\;].*//g |  
+	while IFS= read -r line
+	do
+	echo "dalsi radek"
+	#echo sed s/[\\\;].*//g $line
+	if [ $DATUM -gt $line ]; then
+		echo "podminka"
+		pocet=$((pocet+1))
+		echo "$pocet"
+	fi
+		
+	done
+	#pocet=$(awk '$1 >= $DATUM { print }' $WEDI_RC | wc -l)
+	
+	echo $pocet
+	
+	cat $WEDI_RC | 
+	tail -n -"$pocet" | 
+	sed s/^$ADRESARHNUS\\\///g | 
+	sed /[/]/d
+	
+	exit $?
+fi
